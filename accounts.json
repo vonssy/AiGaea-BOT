@@ -1,0 +1,10 @@
+[
+    {
+        "Browser_ID": "The first 8 digits of your browser_id 1",
+        "Token": "Your aigaea_bearer_token 1"
+    },
+    {
+        "Browser_ID": "The first 8 digits of your browser_id 2",
+        "Token": "Your aigaea_bearer_token 2"
+    }
+]
