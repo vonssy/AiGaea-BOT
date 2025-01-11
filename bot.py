@@ -123,6 +123,9 @@ class AiGaea:
     
     def generate_browser_id(self, browser_id: str):
         random_browser_id = str(uuid.uuid4())[8:]
+        if len(browser_id) > 8:
+            browser_id = browser_id[:8]
+
         return browser_id + random_browser_id
     
     def hide_token(self, token):
@@ -154,6 +157,28 @@ class AiGaea:
                 
     async def user_earning(self, token: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/earn/info"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+
+        }
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result['data']
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(2)
+                else:
+                    return None
+                
+    async def user_ip(self, token: str, proxy=None, retries=5):
+        url = "https://api.aigaea.net/api/network/ip"
         headers = {
             **self.headers,
             "Authorization": f"Bearer {token}",
@@ -220,34 +245,36 @@ class AiGaea:
                 else:
                     return None
                 
-    async def dashboard_ping(self, token: str, random_browser_id: str, uid: str, proxy=None, retries=5):
-        url = "https://api.aigaea.net/api/network/ping"
-        data = json.dumps({"browser_id":random_browser_id, "timestamp":int(time.time()), "uid":uid, "version":"1.0.1"})
-        headers = {
-            **self.headers,
-            "Authorization": f"Bearer {token}",
-            "Content-Length": str(len(data)),
-            "Content-Type": "application/json"
+    async def earning_log(self, token: str, name: str, proxy=None):
+        while True:
+            earning_total = 0
+            earning_today = 0
+            today_uptime = 0
 
-        }
-        await asyncio.sleep(3)
-        for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
-            try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data) as response:
-                        response.raise_for_status()
-                        result = await response.json()
-                        return result['data']
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(2)
-                else:
-                    return None
+            earning = await self.user_earning(token, proxy)
+            if earning:
+                earning_total = earning['total_total']
+                earning_today = earning['today_total']
+                today_uptime = earning['today_uptime']
+
+            self.log(
+                f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
+                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                f"{Fore.CYAN + Style.BRIGHT} Earning {Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT}Total {earning_total} PTS{Style.RESET_ALL}"
+                f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT}Today {earning_today} PTS{Style.RESET_ALL}"
+                f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                f"{Fore.CYAN + Style.BRIGHT}Uptime{Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT} {today_uptime} Minutes {Style.RESET_ALL}"
+                f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+            )
+            await asyncio.sleep(1800)
                 
-    async def extension_ping(self, token: str, random_browser_id: str, uid: str, proxy=None, retries=5):
+    async def send_ping(self, token: str, browser_id: str, uid: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/network/ping"
-        data = json.dumps({"browser_id":random_browser_id, "timestamp":int(time.time()), "uid":uid, "version":"2.0.2"})
+        data = json.dumps({"browser_id":browser_id, "timestamp":int(time.time()), "uid":uid, "version":"2.0.2"})
         headers = {
             "Accept": "*/*",
             "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -260,39 +287,11 @@ class AiGaea:
             "Sec-Fetch-Site": "none",
             "User-Agent": FakeUserAgent().random
         }
-        await asyncio.sleep(3)
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=headers, data=data) as response:
-                        response.raise_for_status()
-                        result = await response.json()
-                        return result['data']
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(2)
-                else:
-                    return None
-                
-    async def network_ip(self, token: str, proxy=None, retries=5):
-        url = "https://api.aigaea.net/api/network/ip"
-        headers = {
-            "Accept": "*/*",
-            "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "none",
-            "User-Agent": FakeUserAgent().random
-        }
-        await asyncio.sleep(3)
-        for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
-            try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers) as response:
                         response.raise_for_status()
                         result = await response.json()
                         return result['data']
@@ -326,24 +325,25 @@ class AiGaea:
         
     async def process_accounts(self, token: str, browser_id: str, use_proxy: bool):
         hide_token = self.hide_token(token)
+        ping_count = 1
         proxy = None
 
         if use_proxy:
             proxy = self.get_next_proxy()
 
         user = None
-        earning = None
-        while user is None or earning is None:
+        while user is None:
             user = await self.user_data(token, proxy)
-            earning = await self.user_earning(token, proxy)
-            if not user or not earning:
+            if not user:
                 self.log(
-                    f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} {hide_token} {Style.RESET_ALL}"
                     f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.RED + Style.BRIGHT} Login Failed {Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT}With Proxy {proxy}{Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Proxy {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.RED + Style.BRIGHT}GET User Data Failed{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} ]{Style.RESET_ALL}"
                 )
                 await asyncio.sleep(1)
 
@@ -364,18 +364,7 @@ class AiGaea:
             name = user['name']
             uid = user['uid']
 
-            self.log(
-                f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT}] [ Earning{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} Total {earning['total_total']} Points {Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} Today {earning['today_total']} Points {Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} Uptime {earning['today_uptime']} {Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-            )
-            await asyncio.sleep(1)
+            asyncio.create_task(self.earning_log(token, name, proxy))
 
             missions = await self.mission_lists(token, proxy)
             if missions:
@@ -388,23 +377,26 @@ class AiGaea:
                         complete = await self.complete_mission(token, mission_id, proxy)
                         if complete:
                             self.log(
-                                f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
                                 f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
-                                f"{Fore.MAGENTA + Style.BRIGHT}] [ Mission{Style.RESET_ALL}"
-                                f"{Fore.WHITE + Style.BRIGHT} {mission['title']} {Style.RESET_ALL}"
-                                f"{Fore.GREEN + Style.BRIGHT}Is Completed{Style.RESET_ALL}"
-                                f"{Fore.MAGENTA + Style.BRIGHT} ] [ Reward{Style.RESET_ALL}"
-                                f"{Fore.WHITE + Style.BRIGHT} {mission['points']} Points {Style.RESET_ALL}"
-                                f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
+                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT} Mission {Style.RESET_ALL}"
+                                f"{Fore.WHITE + Style.BRIGHT}{mission['title']}{Style.RESET_ALL}"
+                                f"{Fore.GREEN + Style.BRIGHT} Is Completed {Style.RESET_ALL}"
+                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT} Reward {Style.RESET_ALL}"
+                                f"{Fore.WHITE + Style.BRIGHT}{mission['points']} PTS{Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT} ]{Style.RESET_ALL}"
                             )
                         else:
                             self.log(
-                                f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
                                 f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
-                                f"{Fore.MAGENTA + Style.BRIGHT}] [ Mission{Style.RESET_ALL}"
-                                f"{Fore.WHITE + Style.BRIGHT} {mission['title']} {Style.RESET_ALL}"
-                                f"{Fore.RED + Style.BRIGHT}Isn't Completed{Style.RESET_ALL}"
-                                f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
+                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT} Mission {Style.RESET_ALL}"
+                                f"{Fore.WHITE + Style.BRIGHT}{mission['title']}{Style.RESET_ALL}"
+                                f"{Fore.RED + Style.BRIGHT} Isn't Completed {Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                             )
                         
                     else:
@@ -412,65 +404,63 @@ class AiGaea:
 
                 if completed:
                     self.log(
-                        f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
                         f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
                         f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                        f"{Fore.GREEN + Style.BRIGHT} Available Mission Is Completed {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
+                        f"{Fore.GREEN + Style.BRIGHT} All Available Mission Is Completed {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                     )
             else:
                 self.log(
-                    f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
                     f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.RED + Style.BRIGHT} Mission Data Is None {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
+                    f"{Fore.RED + Style.BRIGHT} GET Mission Data Failed {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                 )
-            await asyncio.sleep(1)
 
-            random_browser_id = self.generate_browser_id(browser_id)
-            
+            host = "Unknown"
+            ip = await self.user_ip(token, proxy)
+            if ip:
+                host = ip['host']
+
             while True:
-                dashboard = await self.dashboard_ping(token, random_browser_id, uid, proxy)
-                extension = await self.extension_ping(token, random_browser_id, uid, proxy)
-                network = await self.network_ip(token, proxy)
-
-                if dashboard and extension and network:
+                ping = await self.send_ping(token, browser_id, uid, proxy)
+                if ping:
                     self.log(
-                        f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
                         f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}] [ Response{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} Dashboard: {Style.RESET_ALL}"
-                        f"{Fore.GREEN + Style.BRIGHT}{dashboard}{Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
-                    )
-                    self.log(
-                        f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}] [ Response{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} Extension: {Style.RESET_ALL}"
-                        f"{Fore.GREEN + Style.BRIGHT}{extension}{Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
-                    )
-                    self.log(
-                        f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}] [ Response{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} Network Data: {Style.RESET_ALL}"
-                        f"{Fore.GREEN + Style.BRIGHT}{network}{Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
+                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT} Proxy {Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                        f"{Fore.GREEN + Style.BRIGHT}PING {ping_count} Success{Style.RESET_ALL}"
+                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT}Network Score {ping['score']}{Style.RESET_ALL}"
+                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}Host{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} {host} {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                     )
                 else:
                     self.log(
-                        f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
                         f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
                         f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                        f"{Fore.RED + Style.BRIGHT} Ping Failed {Style.RESET_ALL}"
-                        f"{Fore.GREEN + Style.BRIGHT}With Proxy {proxy}{Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT} Proxy {Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                        f"{Fore.RED + Style.BRIGHT}PING {ping_count} Failed{Style.RESET_ALL}"
+                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}Host{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} {host} {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                     )
+
                     if use_proxy:
                         proxy = self.get_next_proxy()
+
+                ping_count += 1
 
                 print(
                     f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
@@ -480,29 +470,6 @@ class AiGaea:
                     flush=True
                 )
                 await asyncio.sleep(600)
-
-                earning = await self.user_earning(token, proxy)
-                if earning:
-                    self.log(
-                        f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}] [ Earning{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} Total {earning['total_total']} Points {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} Today {earning['today_total']} Points {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} Uptime {earning['today_uptime']} {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-                    )
-                else:
-                    self.log(
-                        f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                        f"{Fore.RED + Style.BRIGHT} Earning Data Is None {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-                    )
-                await asyncio.sleep(1)
     
     async def main(self):
         try:
@@ -536,6 +503,7 @@ class AiGaea:
                     token = account["Token"]
                     browser_id = account["Browser_ID"]
                     if token and browser_id:
+                        browser_id = self.generate_browser_id(browser_id)
                         tasks.append(self.process_accounts(token, browser_id, use_proxy))
 
                 await asyncio.gather(*tasks)
