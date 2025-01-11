@@ -270,7 +270,7 @@ class AiGaea:
                 f"{Fore.WHITE + Style.BRIGHT} {today_uptime} Minutes {Style.RESET_ALL}"
                 f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
             )
-            await asyncio.sleep(1800)
+            await asyncio.sleep(900)
                 
     async def send_ping(self, token: str, browser_id: str, uid: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/network/ping"
