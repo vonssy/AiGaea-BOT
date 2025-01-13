@@ -7,7 +7,7 @@ from aiohttp_socks import ProxyConnector
 from colorama import *
 from datetime import datetime
 from fake_useragent import FakeUserAgent
-import asyncio, time, json, uuid, os, pytz
+import asyncio, time, base64, json, uuid, os, pytz
 
 wib = pytz.timezone('Asia/Jakarta')
 
@@ -131,6 +131,24 @@ class AiGaea:
     def hide_token(self, token):
         hide_token = token[:3] + '*' * 3 + token[-3:]
         return hide_token
+    
+    def decode_token(self, token: str):
+        header, payload, signature = token.split(".")
+        decoded_payload = base64.urlsafe_b64decode(payload + "==").decode("utf-8")
+        parsed_payload = json.loads(decoded_payload)
+        if parsed_payload and "expire" in parsed_payload:
+            exp_time = parsed_payload['expire']
+            exp_time_wib = datetime.fromtimestamp(exp_time, pytz.utc).astimezone(wib).strftime('%x %X %Z')
+            return exp_time_wib
+
+    def print_token_exp(self, name):
+        return self.log(
+            f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+            f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
+            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+            f"{Fore.RED + Style.BRIGHT} Access Token Expired {Style.RESET_ALL}"
+            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+        )
         
     async def user_data(self, token: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/auth/session"
@@ -146,6 +164,16 @@ class AiGaea:
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=headers) as response:
+                        if response.status == 401:
+                            self.log(
+                                f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                                f"{Fore.WHITE + Style.BRIGHT} {self.hide_token(token)} {Style.RESET_ALL}"
+                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                f"{Fore.RED + Style.BRIGHT} Access Token Expired {Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                            )
+                            return
+
                         response.raise_for_status()
                         result = await response.json()
                         return result['data']
@@ -155,7 +183,7 @@ class AiGaea:
                 else:
                     return None
                 
-    async def user_earning(self, token: str, proxy=None, retries=5):
+    async def user_earning(self, token: str, name: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/earn/info"
         headers = {
             **self.headers,
@@ -168,6 +196,10 @@ class AiGaea:
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.get(url=url, headers=headers) as response:
+                        if response.status == 401:
+                            self.print_token_exp(name)
+                            return
+
                         response.raise_for_status()
                         result = await response.json()
                         return result['data']
@@ -177,7 +209,7 @@ class AiGaea:
                 else:
                     return None
                 
-    async def user_ip(self, token: str, proxy=None, retries=5):
+    async def user_ip(self, token: str, name: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/network/ip"
         headers = {
             **self.headers,
@@ -190,6 +222,10 @@ class AiGaea:
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.get(url=url, headers=headers) as response:
+                        if response.status == 401:
+                            self.print_token_exp(name)
+                            return
+                            
                         response.raise_for_status()
                         result = await response.json()
                         return result['data']
@@ -199,7 +235,7 @@ class AiGaea:
                 else:
                     return None
                 
-    async def mission_lists(self, token: str, proxy=None, retries=5):
+    async def mission_lists(self, token: str, name: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/mission/list"
         headers = {
             **self.headers,
@@ -212,6 +248,10 @@ class AiGaea:
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.get(url=url, headers=headers) as response:
+                        if response.status == 401:
+                            self.print_token_exp(name)
+                            return
+                        
                         response.raise_for_status()
                         result = await response.json()
                         return result['data']
@@ -221,7 +261,7 @@ class AiGaea:
                 else:
                     return None
                 
-    async def complete_mission(self, token: str, mission_id: int, proxy=None, retries=5):
+    async def complete_mission(self, token: str, name: str, mission_id: int, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/mission/complete-mission"
         data = json.dumps({"mission_id":mission_id})
         headers = {
@@ -236,6 +276,10 @@ class AiGaea:
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=headers, data=data) as response:
+                        if response.status == 401:
+                            self.print_token_exp(name)
+                            return
+                        
                         response.raise_for_status()
                         result = await response.json()
                         return result['data']
@@ -250,8 +294,13 @@ class AiGaea:
             earning_total = 0
             earning_today = 0
             today_uptime = 0
+            time = "N/A"
 
-            earning = await self.user_earning(token, proxy)
+            exp_token_time = self.decode_token(token)
+            if exp_token_time:
+                time = exp_token_time
+
+            earning = await self.user_earning(token, name, proxy)
             if earning:
                 earning_total = earning['total_total']
                 earning_today = earning['today_total']
@@ -268,11 +317,14 @@ class AiGaea:
                 f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
                 f"{Fore.CYAN + Style.BRIGHT}Uptime{Style.RESET_ALL}"
                 f"{Fore.WHITE + Style.BRIGHT} {today_uptime} Minutes {Style.RESET_ALL}"
-                f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                f"{Fore.CYAN + Style.BRIGHT} Token Expired at {Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT}{time}{Style.RESET_ALL}"
+                f"{Fore.CYAN + Style.BRIGHT} ]{Style.RESET_ALL}"
             )
             await asyncio.sleep(900)
                 
-    async def send_ping(self, token: str, browser_id: str, uid: str, proxy=None, retries=5):
+    async def send_ping(self, token: str, name: str, browser_id: str, uid: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/network/ping"
         data = json.dumps({"browser_id":browser_id, "timestamp":int(time.time()), "uid":uid, "version":"2.0.2"})
         headers = {
@@ -292,6 +344,10 @@ class AiGaea:
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=headers, data=data) as response:
+                        if response.status == 401:
+                            self.print_token_exp(name)
+                            return
+                        
                         response.raise_for_status()
                         result = await response.json()
                         return result['data']
@@ -366,7 +422,7 @@ class AiGaea:
 
             asyncio.create_task(self.earning_log(token, name, proxy))
 
-            missions = await self.mission_lists(token, proxy)
+            missions = await self.mission_lists(token, name, proxy)
             if missions:
                 completed = False
                 for mission in missions:
@@ -374,7 +430,7 @@ class AiGaea:
                     status = mission['status']
 
                     if mission and status == "AVAILABLE":
-                        complete = await self.complete_mission(token, mission_id, proxy)
+                        complete = await self.complete_mission(token, name, mission_id, proxy)
                         if complete:
                             self.log(
                                 f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
@@ -420,12 +476,12 @@ class AiGaea:
                 )
 
             host = "Unknown"
-            ip = await self.user_ip(token, proxy)
+            ip = await self.user_ip(token, name, proxy)
             if ip:
                 host = ip['host']
 
             while True:
-                ping = await self.send_ping(token, browser_id, uid, proxy)
+                ping = await self.send_ping(token, name, browser_id, uid, proxy)
                 if ping:
                     self.log(
                         f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
