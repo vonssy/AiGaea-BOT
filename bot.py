@@ -132,7 +132,7 @@ class AiGaea:
         hide_token = token[:3] + '*' * 3 + token[-3:]
         return hide_token
     
-    def decode_token(self, token: str):
+    def token_data(self, token: str):
         header, payload, signature = token.split(".")
         decoded_payload = base64.urlsafe_b64decode(payload + "==").decode("utf-8")
         parsed_payload = json.loads(decoded_payload)
@@ -141,7 +141,7 @@ class AiGaea:
             exp_time_wib = datetime.fromtimestamp(exp_time, pytz.utc).astimezone(wib).strftime('%x %X %Z')
             return exp_time_wib
 
-    def print_token_exp(self, name):
+    def print_message(self, name):
         return self.log(
             f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
             f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
@@ -180,8 +180,9 @@ class AiGaea:
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(2)
-                else:
-                    return None
+                    continue
+                
+                return None
                 
     async def user_earning(self, token: str, name: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/earn/info"
@@ -197,8 +198,7 @@ class AiGaea:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.get(url=url, headers=headers) as response:
                         if response.status == 401:
-                            self.print_token_exp(name)
-                            return
+                            return self.print_message(name)
 
                         response.raise_for_status()
                         result = await response.json()
@@ -206,8 +206,9 @@ class AiGaea:
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(2)
-                else:
-                    return None
+                    continue
+                
+                return None
                 
     async def user_ip(self, token: str, name: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/network/ip"
@@ -223,8 +224,7 @@ class AiGaea:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.get(url=url, headers=headers) as response:
                         if response.status == 401:
-                            self.print_token_exp(name)
-                            return
+                            return self.print_message(name)
                             
                         response.raise_for_status()
                         result = await response.json()
@@ -232,8 +232,9 @@ class AiGaea:
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(2)
-                else:
-                    return None
+                    continue
+                
+                return None
                 
     async def mission_lists(self, token: str, name: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/mission/list"
@@ -249,8 +250,7 @@ class AiGaea:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.get(url=url, headers=headers) as response:
                         if response.status == 401:
-                            self.print_token_exp(name)
-                            return
+                            return self.print_message(name)
                         
                         response.raise_for_status()
                         result = await response.json()
@@ -258,8 +258,9 @@ class AiGaea:
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(2)
-                else:
-                    return None
+                    continue
+                
+                return None
                 
     async def complete_mission(self, token: str, name: str, mission_id: int, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/mission/complete-mission"
@@ -277,8 +278,7 @@ class AiGaea:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=headers, data=data) as response:
                         if response.status == 401:
-                            self.print_token_exp(name)
-                            return
+                            return self.print_message(name)
                         
                         response.raise_for_status()
                         result = await response.json()
@@ -286,8 +286,9 @@ class AiGaea:
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(2)
-                else:
-                    return None
+                    continue
+                
+                return None
                 
     async def send_ping(self, token: str, name: str, browser_id: str, uid: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/network/ping"
@@ -310,8 +311,7 @@ class AiGaea:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=headers, data=data) as response:
                         if response.status == 401:
-                            self.print_token_exp(name)
-                            return
+                            return self.print_message(name)
                         
                         response.raise_for_status()
                         result = await response.json()
@@ -319,8 +319,9 @@ class AiGaea:
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(2)
-                else:
-                    return None
+                    continue
+                
+                return None
                 
     async def process_user_data(self, token: str, name: str, proxy=None):
         while True:
@@ -329,7 +330,7 @@ class AiGaea:
             today_uptime = 0
             time = "N/A"
 
-            exp_token_time = self.decode_token(token)
+            exp_token_time = self.token_data(token)
             if exp_token_time:
                 time = exp_token_time
 
@@ -530,11 +531,11 @@ class AiGaea:
             name = user['name']
             uid = user['uid']
 
-            asyncio.create_task(self.process_user_data(token, name, proxy))
-
-            asyncio.create_task(self.process_missions(token, name, proxy))
-
-            asyncio.create_task(self.process_send_ping(token, name, browser_id, uid, use_proxy, proxy))
+            await asyncio.gather(
+                self.process_user_data(token, name, proxy),
+                self.process_missions(token, name, proxy),
+                self.process_send_ping(token, name, browser_id, uid, use_proxy, proxy)
+            )
     
     async def main(self):
         try:
