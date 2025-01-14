@@ -289,7 +289,40 @@ class AiGaea:
                 else:
                     return None
                 
-    async def earning_log(self, token: str, name: str, proxy=None):
+    async def send_ping(self, token: str, name: str, browser_id: str, uid: str, proxy=None, retries=5):
+        url = "https://api.aigaea.net/api/network/ping"
+        data = json.dumps({"browser_id":browser_id, "timestamp":int(time.time()), "uid":uid, "version":"2.0.2"})
+        headers = {
+            "Accept": "*/*",
+            "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Authorization": f"Bearer {token}",
+            "Content-Length": str(len(data)),
+            "Content-Type": "application/json",
+            "Origin": "chrome-extension://cpjicfogbgognnifjgmenmaldnmeeeib",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "none",
+            "User-Agent": FakeUserAgent().random
+        }
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.post(url=url, headers=headers, data=data) as response:
+                        if response.status == 401:
+                            self.print_token_exp(name)
+                            return
+                        
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result['data']
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(2)
+                else:
+                    return None
+                
+    async def process_user_data(self, token: str, name: str, proxy=None):
         while True:
             earning_total = 0
             earning_today = 0
@@ -323,105 +356,9 @@ class AiGaea:
                 f"{Fore.CYAN + Style.BRIGHT} ]{Style.RESET_ALL}"
             )
             await asyncio.sleep(900)
-                
-    async def send_ping(self, token: str, name: str, browser_id: str, uid: str, proxy=None, retries=5):
-        url = "https://api.aigaea.net/api/network/ping"
-        data = json.dumps({"browser_id":browser_id, "timestamp":int(time.time()), "uid":uid, "version":"2.0.2"})
-        headers = {
-            "Accept": "*/*",
-            "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Authorization": f"Bearer {token}",
-            "Content-Length": str(len(data)),
-            "Content-Type": "application/json",
-            "Origin": "chrome-extension://cpjicfogbgognnifjgmenmaldnmeeeib",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "none",
-            "User-Agent": FakeUserAgent().random
-        }
-        for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
-            try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data) as response:
-                        if response.status == 401:
-                            self.print_token_exp(name)
-                            return
-                        
-                        response.raise_for_status()
-                        result = await response.json()
-                        return result['data']
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(2)
-                else:
-                    return None
-        
-    async def question(self):
+
+    async def process_missions(self, token: str, name: str, proxy=None):
         while True:
-            try:
-                print("1. Run With Auto Proxy")
-                print("2. Run With Manual Proxy")
-                print("3. Run Without Proxy")
-                choose = int(input("Choose [1/2/3] -> ").strip())
-
-                if choose in [1, 2, 3]:
-                    proxy_type = (
-                        "With Auto" if choose == 1 else 
-                        "With Manual" if choose == 2 else 
-                        "Without"
-                    )
-                    print(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected.{Style.RESET_ALL}")
-                    await asyncio.sleep(1)
-                    return choose
-                else:
-                    print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
-            except ValueError:
-                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
-        
-    async def process_accounts(self, token: str, browser_id: str, use_proxy: bool):
-        hide_token = self.hide_token(token)
-        ping_count = 1
-        proxy = None
-
-        if use_proxy:
-            proxy = self.get_next_proxy()
-
-        user = None
-        while user is None:
-            user = await self.user_data(token, proxy)
-            if not user:
-                self.log(
-                    f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} {hide_token} {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT} Proxy {Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                    f"{Fore.RED + Style.BRIGHT}GET User Data Failed{Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT} ]{Style.RESET_ALL}"
-                )
-                await asyncio.sleep(1)
-
-                if not use_proxy:
-                    return
-
-                print(
-                    f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.YELLOW + Style.BRIGHT}Try With Next Proxy...{Style.RESET_ALL}",
-                    end="\r",
-                    flush=True
-                )
-
-                proxy = self.get_next_proxy()
-                continue
-            
-            name = user['name']
-            uid = user['uid']
-
-            asyncio.create_task(self.earning_log(token, name, proxy))
-
             missions = await self.mission_lists(token, name, proxy)
             if missions:
                 completed = False
@@ -474,58 +411,130 @@ class AiGaea:
                     f"{Fore.RED + Style.BRIGHT} GET Mission Data Failed {Style.RESET_ALL}"
                     f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                 )
+                
+            await asyncio.sleep(86400)
 
-            host = "Unknown"
-            ip = await self.user_ip(token, name, proxy)
-            if ip:
-                host = ip['host']
+    async def process_send_ping(self, token: str, name: str, browser_id: str, uid: str, use_proxy: bool, proxy=None):
+        ping_count = 1
+        host = "Unknown"
+        ip = await self.user_ip(token, name, proxy)
+        if ip:
+            host = ip['host']
 
-            while True:
-                ping = await self.send_ping(token, name, browser_id, uid, proxy)
-                if ping:
-                    self.log(
-                        f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                        f"{Fore.CYAN + Style.BRIGHT} Proxy {Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                        f"{Fore.GREEN + Style.BRIGHT}PING {ping_count} Success{Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT}Network Score {ping['score']}{Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                        f"{Fore.CYAN + Style.BRIGHT}Host{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {host} {Style.RESET_ALL}"
-                        f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+        while True:
+            ping = await self.send_ping(token, name, browser_id, uid, proxy)
+            if ping:
+                self.log(
+                    f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Proxy {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.GREEN + Style.BRIGHT}PING {ping_count} Success{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}Network Score {ping['score']}{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}Host{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {host} {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                )
+            else:
+                self.log(
+                    f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Proxy {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.RED + Style.BRIGHT}PING {ping_count} Failed{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}Host{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {host} {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                )
+
+                if use_proxy:
+                    proxy = self.get_next_proxy()
+
+            ping_count += 1
+
+            print(
+                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                f"{Fore.YELLOW + Style.BRIGHT}Wait For 10 Minutes For Next Ping...{Style.RESET_ALL}",
+                end="\r",
+                flush=True
+            )
+            await asyncio.sleep(600)
+        
+    async def question(self):
+        while True:
+            try:
+                print("1. Run With Auto Proxy")
+                print("2. Run With Manual Proxy")
+                print("3. Run Without Proxy")
+                choose = int(input("Choose [1/2/3] -> ").strip())
+
+                if choose in [1, 2, 3]:
+                    proxy_type = (
+                        "With Auto" if choose == 1 else 
+                        "With Manual" if choose == 2 else 
+                        "Without"
                     )
+                    print(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected.{Style.RESET_ALL}")
+                    await asyncio.sleep(1)
+                    return choose
                 else:
-                    self.log(
-                        f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {name} {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                        f"{Fore.CYAN + Style.BRIGHT} Proxy {Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                        f"{Fore.RED + Style.BRIGHT}PING {ping_count} Failed{Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                        f"{Fore.CYAN + Style.BRIGHT}Host{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {host} {Style.RESET_ALL}"
-                        f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
-                    )
+                    print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
+            except ValueError:
+                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
+        
+    async def process_accounts(self, token: str, browser_id: str, use_proxy: bool):
+        hide_token = self.hide_token(token)
+        proxy = None
 
-                    if use_proxy:
-                        proxy = self.get_next_proxy()
+        if use_proxy:
+            proxy = self.get_next_proxy()
 
-                ping_count += 1
+        user = None
+        while user is None:
+            user = await self.user_data(token, proxy)
+            if not user:
+                self.log(
+                    f"{Fore.CYAN + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {hide_token} {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Proxy {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.RED + Style.BRIGHT}GET User Data Failed{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} ]{Style.RESET_ALL}"
+                )
+                await asyncio.sleep(1)
+
+                if not use_proxy:
+                    return
 
                 print(
                     f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.YELLOW + Style.BRIGHT}Wait For 10 Minutes For Next Ping...{Style.RESET_ALL}",
+                    f"{Fore.YELLOW + Style.BRIGHT}Try With Next Proxy...{Style.RESET_ALL}",
                     end="\r",
                     flush=True
                 )
-                await asyncio.sleep(600)
+
+                proxy = self.get_next_proxy()
+                continue
+            
+            name = user['name']
+            uid = user['uid']
+
+            asyncio.create_task(self.process_user_data(token, name, proxy))
+
+            asyncio.create_task(self.process_missions(token, name, proxy))
+
+            asyncio.create_task(self.process_send_ping(token, name, browser_id, uid, use_proxy, proxy))
     
     async def main(self):
         try:
@@ -563,7 +572,7 @@ class AiGaea:
                         tasks.append(self.process_accounts(token, browser_id, use_proxy))
 
                 await asyncio.gather(*tasks)
-                await asyncio.sleep(3)
+                await asyncio.sleep(10)
 
         except (Exception, FileNotFoundError) as e:
             self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
