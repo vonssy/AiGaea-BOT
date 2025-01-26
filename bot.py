@@ -127,10 +127,10 @@ class AiGaea:
         
     def generate_random_browser_id(self, browser_id: str):
         random_browser_id = str(uuid.uuid4())[8:]
-        if len(browser_id) > 8:
-            browser_id = browser_id[:8]
+        if len(browser_id) == 32:
+            return browser_id
 
-        return browser_id + random_browser_id
+        return browser_id[:8] + random_browser_id
 
     def print_message(self, account, proxy, color, message):
         self.log(
