@@ -191,8 +191,8 @@ class AiGaea:
             **self.headers,
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
-
         }
+        await asyncio.sleep(3)
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
@@ -214,8 +214,8 @@ class AiGaea:
             **self.headers,
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
-
         }
+        await asyncio.sleep(3)
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
@@ -237,8 +237,8 @@ class AiGaea:
             **self.headers,
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
-
         }
+        await asyncio.sleep(3)
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
@@ -262,8 +262,8 @@ class AiGaea:
             "Authorization": f"Bearer {token}",
             "Content-Length": str(len(data)),
             "Content-Type": "application/json"
-
         }
+        await asyncio.sleep(3)
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
@@ -294,6 +294,7 @@ class AiGaea:
             "Sec-Fetch-Site": "none",
             "User-Agent": FakeUserAgent().random
         }
+        await asyncio.sleep(3)
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
@@ -329,7 +330,7 @@ class AiGaea:
                     f"{Fore.WHITE + Style.BRIGHT}Today {uptime} Minutes{Style.RESET_ALL}"
                 )
 
-            await asyncio.sleep(10 * 60)
+            await asyncio.sleep(15 * 60)
 
     async def process_user_missions(self, token: str, username: str, use_proxy: bool):
         while True:
@@ -379,6 +380,7 @@ class AiGaea:
                 end="\r",
                 flush=True
             )
+
             proxy = self.get_next_proxy_for_account(token) if use_proxy else None
             ping = await self.send_ping(token, radnom_browser_id, username, user_id, use_proxy, proxy)
             if ping:
