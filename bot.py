@@ -281,7 +281,7 @@ class AiGaea:
                 
     async def send_ping(self, token: str, radnom_browser_id: str, username: str, user_id: str, use_proxy: bool, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/network/ping"
-        data = json.dumps({"radnom_":radnom_browser_id, "timestamp":int(time.time()), "uid":user_id, "version":"2.0.2"})
+        data = json.dumps({"browser_id":radnom_browser_id, "timestamp":int(time.time()), "uid":user_id, "version":"2.0.2"})
         headers = {
             "Accept": "*/*",
             "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -308,9 +308,7 @@ class AiGaea:
                     continue
                 
                 self.print_message(username, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
-
                 proxy = self.rotate_proxy_for_account(token) if use_proxy else None
-
                 return None
             
     async def process_user_earning(self, token: str, username: str, use_proxy: bool):
