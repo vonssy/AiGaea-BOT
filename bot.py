@@ -368,7 +368,7 @@ class AiGaea:
                         "All Available Mission Is Completed"
                     )
                 
-            await asyncio.sleep(24 * 60 * 60)
+            await asyncio.sleep(12 * 60 * 60)
 
     async def process_send_ping(self, token: str, browser_id: str, username: str, user_id: str, server_host: str, use_proxy: bool):
         radnom_browser_id = self.generate_random_browser_id(browser_id)
