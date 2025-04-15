@@ -160,11 +160,24 @@ class AiGaea:
                         "Run Without Proxy"
                     )
                     print(f"{Fore.GREEN + Style.BRIGHT}{proxy_type} Selected.{Style.RESET_ALL}")
-                    return choose
+                    break
                 else:
                     print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
             except ValueError:
                 print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
+
+        while True:
+            try:
+                trained = input("Auto Complete Training? Will Burned 0-2500 PTS (y/n) ->").strip().lower()
+                if trained in ["y", "n"]:
+                    trained = trained == "y"
+                    break
+                else:
+                    print(f"{Fore.RED + Style.BRIGHT}Enter 'y' to Yes or 'n' to Skip.{Style.RESET_ALL}")
+            except ValueError:
+                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' to Yes or 'n' to Skip.{Style.RESET_ALL}")
+
+        return choose, trained
 
     async def user_data(self, token: str, proxy=None):
         url = "https://api.aigaea.net/api/auth/session"
@@ -230,6 +243,30 @@ class AiGaea:
                     continue
                 
                 return self.print_message(username, proxy, Fore.RED, f"GET Earning Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                
+    async def complete_training(self, token: str, username: str, proxy=None, retries=5):
+        url = "https://api.aigaea.net/api/ai/complete"
+        data = json.dumps({"detail":"1_0_0"})
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Length": str(len(data)),
+            "Content-Type": "application/json"
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.post(url=url, headers=headers, data=data) as response:
+                        response.raise_for_status()
+                        return await response.json()
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                
+                return self.print_message(username, proxy, Fore.RED, f"Complete Training Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
                 
     async def mission_lists(self, token: str, username: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/mission/list"
@@ -331,6 +368,29 @@ class AiGaea:
                 )
 
             await asyncio.sleep(15 * 60)
+            
+    async def process_complete_training(self, token: str, username: str, use_proxy: bool):
+        while True:
+            proxy = self.get_next_proxy_for_account(token) if use_proxy else None
+            train = await self.complete_training(token, username, proxy)
+            if train and train.get("code") == 200:
+                burned_points = train.get('burned_points', 0)
+                soul = train.get('soul', 0)
+                blindbox = train.get('blindbox', 0)
+
+                self.print_message(username, proxy, Fore.GREEN, "Training Completed "
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} Burned {burned_points} PTS {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{soul} Soul PTS{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
+                )
+            elif train and train.get("code") == 400:
+                self.print_message(username, proxy, Fore.YELLOW, "Training Already Completed")
+
+            await asyncio.sleep(24 * 60 * 60)
 
     async def process_user_missions(self, token: str, username: str, use_proxy: bool):
         while True:
@@ -423,13 +483,15 @@ class AiGaea:
 
             return user, server_host
         
-    async def process_accounts(self, token: str, browser_id: str, use_proxy: bool):
+    async def process_accounts(self, token: str, browser_id: str, use_proxy: bool, trained: str):
         user, server_host = await self.get_user_data(token, use_proxy)
         if user and server_host:
             username = user['name']
             user_id = user['uid']
 
             tasks = []
+            if trained:
+                tasks.append(self.process_complete_training(token, username, use_proxy))
             tasks.append(self.process_user_earning(token, username, use_proxy))
             tasks.append(self.process_user_missions(token, username, use_proxy))
             tasks.append(self.process_send_ping(token, browser_id, username, user_id, server_host, use_proxy))
@@ -442,7 +504,7 @@ class AiGaea:
                 self.log(f"{Fore.RED+Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
                 return
             
-            use_proxy_choice = self.print_question()
+            use_proxy_choice, trained = self.print_question()
 
             use_proxy = False
             if use_proxy_choice in [1, 2]:
@@ -467,7 +529,7 @@ class AiGaea:
                     token = account.get('Token')
 
                     if token and browser_id:
-                        tasks.append(self.process_accounts(token, browser_id, use_proxy))
+                        tasks.append(self.process_accounts(token, browser_id, use_proxy, trained))
 
                 await asyncio.gather(*tasks)
                 await asyncio.sleep(10)
