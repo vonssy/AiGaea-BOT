@@ -3,6 +3,7 @@ AI Gaea Network BOT
 
 - Register Here : [AI Gaea Network](https://app.aigaea.net/register?ref=gaj5yIoPw8Osap)
 - Use Code: gaj5yIoPw8Osap
+- Download Extension
 
 ## Features
 
@@ -11,7 +12,6 @@ AI Gaea Network BOT
   - Auto Run With Private Proxy - Choose 2
   - Auto Run Without Proxy - Choose 3
   - Auto Complete Training
-  - Auto Complete Available Mission
   - Auto Send Ping Every 10 Minutes
   - Multi Accounts With Threads
 
@@ -39,20 +39,19 @@ AI Gaea Network BOT
 ### Screenshots
 
 <div style="text-align: center;">
-  <h4><strong>The First 8 Digits of Ur Browser ID</strong></h4>
   <img src="image.png" alt="Image" width="500"/>
 </div>
 
 - **accounts.json:** You will find the file `accounts.json` inside the project directory. Make sure `accounts.json` contains data that matches the format expected by the script. Here are examples of file formats:
-  ```bash
+  ```json
     [
         {
-            "Browser_ID": "The first 8 digits of your browser_id 1",
-            "Token": "Your aigaea_bearer_token 1"
+            "browserId": "Your browser_id 1",
+            "gaeaToken": "Your aigaea__token 1"
         },
         {
-            "Browser_ID": "The first 8 digits of your browser_id 2",
-            "Token": "Your aigaea_bearer_token 2"
+            "browserId": "Your browser_id 2",
+            "gaeaToken": "Your aigaea__token 2"
         }
     ]
   ```
