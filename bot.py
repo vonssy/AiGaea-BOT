@@ -13,33 +13,23 @@ wib = pytz.timezone('Asia/Jakarta')
 
 class AiGaea:
     def __init__(self) -> None:
-        self.UA = FakeUserAgent().random
-        self.DASHBOARD_HEADERS = {
+        self.headers = {
             "Accept": "*/*",
             "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
             "Origin": "https://app.aigaea.net",
-            "Priority": "u=1, i",
             "Referer": "https://app.aigaea.net/",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-site",
-            "User-Agent": self.UA
-        }
-        self.EXTENSION_HEADERS = {
-            "Accept": "*/*",
-            "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Origin": "chrome-extension://cpjicfogbgognnifjgmenmaldnmeeeib",
-            "Priority": "u=1, i",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-Storage-Access": "active",
-            "User-Agent": self.UA
+            "User-Agent": FakeUserAgent().random
         }
         self.BASE_API = "https://api.aigaea.net/api"
         self.proxies = []
         self.proxy_index = 0
         self.account_proxies = {}
+        self.gaea_tokens = {}
+        self.browser_ids = {}
+        self.usernames = {}
 
     def clear_terminal(self):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -142,15 +132,36 @@ class AiGaea:
             parsed_payload = json.loads(decoded_payload)
             username = parsed_payload["username"]
             user_id = parsed_payload["userid"]
+            exp_time = parsed_payload["expire"]
             
-            return username, user_id
+            return username, user_id, exp_time
         except Exception as e:
-            return None, None
+            return None, None, None
+    
+    def generate_ping_payload(self, user_id: str):
+        payload = {
+            "uid":user_id,
+            "browser_id":self.browser_ids[user_id],
+            "timestamp":int(time.time()),
+            "version":"3.0.19"
+        }
+
+        return payload
     
     def mask_account(self, account):
         mask_account = account[:3] + '*' * 3 + account[-3:]
         return mask_account
 
+    def print_err_message(self, account, color, message):
+        self.log(
+            f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
+            f"{Fore.WHITE + Style.BRIGHT} {account} {Style.RESET_ALL}"
+            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+            f"{Fore.CYAN + Style.BRIGHT} Status: {Style.RESET_ALL}"
+            f"{color + Style.BRIGHT}{message}{Style.RESET_ALL}"
+            f"{Fore.CYAN + Style.BRIGHT} ]{Style.RESET_ALL}"
+        )
+        
     def print_message(self, account, proxy, color, message):
         self.log(
             f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
@@ -165,12 +176,14 @@ class AiGaea:
         )
 
     def print_question(self):
+        rotate = False
+
         while True:
             try:
-                print("1. Run With Monosans Proxy")
-                print("2. Run With Private Proxy")
-                print("3. Run Without Proxy")
-                choose = int(input("Choose [1/2/3] -> ").strip())
+                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Monosans Proxy{Style.RESET_ALL}")
+                print(f"{Fore.WHITE + Style.BRIGHT}2. Run With Private Proxy{Style.RESET_ALL}")
+                print(f"{Fore.WHITE + Style.BRIGHT}3. Run Without Proxy{Style.RESET_ALL}")
+                choose = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2/3] -> {Style.RESET_ALL}").strip())
 
                 if choose in [1, 2, 3]:
                     proxy_type = (
@@ -185,24 +198,38 @@ class AiGaea:
             except ValueError:
                 print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
 
-        while True:
-            try:
-                trained = input("Auto Complete Training? Will Burned 0-2500 PTS (y/n) ->").strip().lower()
-                if trained in ["y", "n"]:
-                    trained = trained == "y"
+        if choose in [1, 2]:
+            while True:
+                rotate = input(f"{Fore.BLUE + Style.BRIGHT}Rotate Invalid Proxy? [y/n] -> {Style.RESET_ALL}").strip()
+                if rotate in ["y", "n"]:
+                    rotate = rotate == "y"
                     break
                 else:
-                    print(f"{Fore.RED + Style.BRIGHT}Enter 'y' to Yes or 'n' to Skip.{Style.RESET_ALL}")
-            except ValueError:
-                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' to Yes or 'n' to Skip.{Style.RESET_ALL}")
+                    print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' or 'n'.{Style.RESET_ALL}")
 
-        return choose, trained
+        return choose, rotate
     
-    async def user_earning(self, token: str, username: str, proxy=None, retries=5):
+    async def check_connection(self, user_id: str, proxy=None):
+        url = f"{self.BASE_API}/network/ip"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {self.gaea_tokens[user_id]}",
+            "Content-Type": "application/json"
+        }
+        connector = ProxyConnector.from_url(proxy) if proxy else None
+        try:
+            async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                async with session.get(url=url, headers=headers) as response:
+                    response.raise_for_status()
+                    return await response.json()
+        except (Exception, ClientResponseError) as e:
+             self.print_message(self.usernames[user_id], proxy, Fore.RED, f"Connection Not 200 OK: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+    
+    async def user_earning(self, user_id: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/earn/info"
         headers = {
-            **self.DASHBOARD_HEADERS,
-            "Authorization": f"Bearer {token}",
+            **self.headers,
+            "Authorization": f"Bearer {self.gaea_tokens[user_id]}",
             "Content-Type": "application/json"
         }
         for attempt in range(retries):
@@ -216,14 +243,56 @@ class AiGaea:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.print_message(username, proxy, Fore.RED, f"GET Earning Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return self.print_message(self.usernames[user_id], proxy, Fore.RED, f"GET Earning Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
                 
-    async def complete_training(self, token: str, username: str, proxy=None, retries=5):
+    async def daily_list(self, user_id: str, proxy=None, retries=5):
+        url = f"{self.BASE_API}/reward/daily-list"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {self.gaea_tokens[user_id]}",
+            "Content-Type": "application/json"
+        }
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        response.raise_for_status()
+                        return await response.json()
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                return self.print_message(self.usernames[user_id], proxy, Fore.RED, f"GET Daily Reward Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+            
+    async def complete_daily(self, user_id: str, daily_id: int, proxy=None, retries=5):
+        url = f"{self.BASE_API}/reward/daily-complete"
+        data = json.dumps({"id":daily_id})
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {self.gaea_tokens[user_id]}",
+            "Content-Length": str(len(data)),
+            "Content-Type": "application/json"
+        }
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.post(url=url, headers=headers, data=data) as response:
+                        response.raise_for_status()
+                        return await response.json()
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                return self.print_message(self.usernames[user_id], proxy, Fore.RED, f"Daily Reward Not Claimed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+            
+    async def complete_training(self, user_id: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/ai/complete"
         data = json.dumps({"detail":"2_0_0"})
         headers = {
-            **self.DASHBOARD_HEADERS,
-            "Authorization": f"Bearer {token}",
+            **self.headers,
+            "Authorization": f"Bearer {self.gaea_tokens[user_id]}",
             "Content-Length": str(len(data)),
             "Content-Type": "application/json"
         }
@@ -238,36 +307,23 @@ class AiGaea:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.print_message(username, proxy, Fore.RED, f"Complete Today Training Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
-                
-    async def user_ip(self, gaea_token: str, username: str, proxy=None, retries=5):
-        url = f"{self.BASE_API}/network/ip"
-        headers = {
-            **self.EXTENSION_HEADERS,
-            "Authorization": f"Bearer {gaea_token}",
-            "Content-Type": "application/json"
-        }
-        for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
-            try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers) as response:
-                        response.raise_for_status()
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(5)
-                    continue
-                return self.print_message(username, proxy, Fore.RED, f"GET IP Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return self.print_message(self.usernames[user_id], proxy, Fore.RED, f"Training Not Completed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
     
-    async def send_ping(self, gaea_token: str, browser_id: str, username: str, user_id: str, proxy=None, retries=5):
+    async def send_ping(self, user_id: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/network/ping"
-        data = json.dumps({"uid":user_id, "browser_id":browser_id, "timestamp":int(time.time()), "version":"3.0.19"})
+        data = json.dumps(self.generate_ping_payload(user_id))
         headers = {
-            **self.EXTENSION_HEADERS,
-            "Authorization": f"Bearer {gaea_token}",
+            "Accept": "*/*",
+            "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Authorization": f"Bearer {self.gaea_tokens[user_id]}",
             "Content-Length": str(len(data)),
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Origin": "chrome-extension://cpjicfogbgognnifjgmenmaldnmeeeib",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-Storage-Access": "active",
+            "User-Agent": FakeUserAgent().random
         }
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
@@ -280,29 +336,77 @@ class AiGaea:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.print_message(username, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return self.print_message(self.usernames[user_id], proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
             
-    async def process_user_earning(self, gaea_token: str, username: str, user_id: str, use_proxy: bool):
+    async def process_check_connection(self, user_id: str, use_proxy: bool, rotate_proxy: bool):
+        proxy = self.get_next_proxy_for_account(user_id) if use_proxy else None
+
+        if rotate_proxy:
+            while True:
+                is_valid = await self.check_connection(user_id, proxy)
+                if is_valid and is_valid.get("code") == 200:
+                    country = is_valid["data"]["country"]
+                    host = is_valid["data"]["host"]
+
+                    self.print_message(self.usernames[user_id], proxy, Fore.GREEN, "Connection 200 OK"
+                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}Country:{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} {country} {Style.RESET_ALL}"
+                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT} Connected Host: {Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT}{host}{Style.RESET_ALL}"
+                    )
+                    return True
+                
+                proxy = self.rotate_proxy_for_account(user_id)
+                await asyncio.sleep(5)
+                continue
+            
+        while True:
+            is_valid = await self.check_connection(user_id, proxy)
+            if is_valid and is_valid.get("code") == 200:
+                country = is_valid["data"]["country"]
+                host = is_valid["data"]["host"]
+
+                self.print_message(self.usernames[user_id], proxy, Fore.GREEN, "Connection 200 OK"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}Country:{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {country} {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Connected Host: {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{host}{Style.RESET_ALL}"
+                )
+                return True
+            
+            proxy = self.rotate_proxy_for_account(user_id)
+            await asyncio.sleep(5)
+            continue
+            
+    async def process_user_earning(self, user_id: str, use_proxy: bool):
         while True:
             proxy = self.get_next_proxy_for_account(user_id) if use_proxy else None
 
-            earning = await self.user_earning(gaea_token, username, proxy)
-            if earning and earning.get("msg") == "Success":
-                today = earning.get("data", {}).get("today_total", "N/A")
-                total = earning.get("data", {}).get("total_total", "N/A")
-                soul = earning.get("data", {}).get("total_soul", "N/A")
-                uptime = earning.get("data", {}).get("today_uptime", "N/A")
+            earning = await self.user_earning(user_id, proxy)
+            if earning and earning.get("code") == 200:
+                today = earning["data"]["today_total"]
+                total = earning["data"]["total_total"]
+                soul = earning["data"]["total_soul"]
+                core = earning["data"]["total_core"]
+                uptime = earning["data"]["today_uptime"]
 
-                self.print_message(username, proxy, Fore.GREEN, "GET Earning Data Success"
-                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT}Today Gaea:{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} {today} PTS {Style.RESET_ALL}"
+                self.print_message(self.usernames[user_id], proxy, Fore.BLUE, "Earning "
                     f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT} Total Gaea: {Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT}{total} PTS{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Today Gaea: {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{today} PTS{Style.RESET_ALL}"
                     f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT}Soul:{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} {soul} PTS {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}Total Gaea:{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {total} PTS {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Soul: {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{soul} PTS{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}Core:{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {core} PTS {Style.RESET_ALL}"
                     f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.CYAN + Style.BRIGHT} Today Uptime: {Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT}{uptime} Minutes{Style.RESET_ALL}"
@@ -310,19 +414,57 @@ class AiGaea:
 
             await asyncio.sleep(30 * 60)
             
-    async def process_complete_training(self, gaea_token: str, username: str, user_id: str, use_proxy: bool):
+    async def process_claim_daily_Reward(self, user_id: str, use_proxy: bool):
         while True:
             proxy = self.get_next_proxy_for_account(user_id) if use_proxy else None
 
-            train = await self.complete_training(gaea_token, username, proxy)
-            if train and train.get("code") == 200:
-                burned_points = train.get("burned_points", 0)
-                soul = train.get("soul", 0)
-                blindbox = train.get("blindbox", 0)
+            daily = await self.daily_list(user_id, proxy)
+            if daily and daily.get("code") == 200:
+                status = daily["data"]["today"]
+                lists = daily["data"]["list"]
 
-                self.print_message(username, proxy, Fore.GREEN, "Today Training Completed "
+                if status == 0:
+                    for list in lists:
+                        daily_id = list["daily"]
+                        reward = list["reward"]
+
+                        if reward == "":
+                            claim = await self.complete_daily(user_id, daily_id, proxy)
+                            if claim and claim.get("code") == 200:
+                                soul = claim["data"]["soul"]
+                                core = claim["data"]["core"]
+                                blindbox = claim["data"]["blindbox"]
+
+                                self.print_message(self.usernames[user_id], proxy, Fore.GREEN, "Daily Reward Claimed Successfully "
+                                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                    f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}{soul} Soul PTS{Style.RESET_ALL}"
+                                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}{core} Core PTS{Style.RESET_ALL}"
+                                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
+                                )
+
+                            break
+                
+                else:
+                    self.print_message(self.usernames[user_id], proxy, Fore.YELLOW, "Daily Reward Already Claimed")
+
+            await asyncio.sleep(12 * 60 * 60)
+
+    async def process_complete_training(self, user_id: str, use_proxy: bool):
+        while True:
+            proxy = self.get_next_proxy_for_account(user_id) if use_proxy else None
+
+            train = await self.complete_training(user_id, proxy)
+            if train and train.get("code") == 200:
+                burned_points = train["data"]["burned_points"]
+                soul = train["data"]["soul"]
+                blindbox = train["data"]["blindbox"]
+
+                self.print_message(self.usernames[user_id], proxy, Fore.GREEN, "Training Completed Successfully "
                     f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} Burned {burned_points} PTS {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} Burned {burned_points} Gaea PTS {Style.RESET_ALL}"
                     f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT}{soul} Soul PTS{Style.RESET_ALL}"
@@ -330,36 +472,11 @@ class AiGaea:
                     f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
                 )
             elif train and train.get("code") == 400:
-                self.print_message(username, proxy, Fore.YELLOW, "Today Training Already Completed")
+                self.print_message(self.usernames[user_id], proxy, Fore.YELLOW, "Today Training Already Completed")
 
             await asyncio.sleep(12 * 60 * 60)
 
-    async def process_get_ip_address(self, gaea_token: str, username: str, user_id: str, use_proxy: bool):
-        proxy = self.get_next_proxy_for_account(user_id) if use_proxy else None
-
-        ip_data = None
-        while ip_data is None:
-            ip_data = await self.user_ip(gaea_token, username, proxy)
-            if not ip_data:
-                proxy = self.rotate_proxy_for_account(user_id) if use_proxy else None
-                await asyncio.sleep(5)
-                continue
-
-            country = ip_data.get("data", {}).get("country", "N/A")
-            host = ip_data.get("data", {}).get("host", "N/A")
-
-            self.print_message(username, proxy, Fore.GREEN, "GET IP Data Success"
-                f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                f"{Fore.CYAN + Style.BRIGHT}Country:{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} {country} {Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                f"{Fore.CYAN + Style.BRIGHT} Connected Host: {Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT}{host}{Style.RESET_ALL}"
-            )
-
-            return True
-
-    async def process_send_ping(self, gaea_token: str, browser_id: str, username: str, user_id: str, use_proxy: bool):
+    async def process_send_ping(self, user_id: str, use_proxy: bool):
         while True:
             proxy = self.get_next_proxy_for_account(user_id) if use_proxy else None
 
@@ -371,11 +488,11 @@ class AiGaea:
                 flush=True
             )
 
-            ping = await self.send_ping(gaea_token, browser_id, username, user_id, proxy)
-            if ping and ping.get("msg") == "Success":
-                score = ping.get("data", {}).get("score", "N/A")
+            ping = await self.send_ping(user_id, proxy)
+            if ping and ping.get("code") == 200:
+                score = ping["data"]["score"]
 
-                self.print_message(username, proxy, Fore.GREEN,"PING Success "
+                self.print_message(self.usernames[user_id], proxy, Fore.GREEN,"PING Success "
                     f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.CYAN + Style.BRIGHT} Network Score: {Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT}{score}{Style.RESET_ALL}"
@@ -390,16 +507,15 @@ class AiGaea:
             )
             await asyncio.sleep(10 * 60)
         
-    async def process_accounts(self, gaea_token: str, browser_id: str, username: str, user_id: str, use_proxy: bool, trained: str):
-        is_ready = await self.process_get_ip_address(gaea_token, username, user_id, use_proxy)
-        if is_ready:
-
-            tasks = []
-            if trained:
-                tasks.append(self.process_complete_training(gaea_token, username, user_id, use_proxy))
-
-            tasks.append(self.process_user_earning(gaea_token, username, user_id, use_proxy))
-            tasks.append(self.process_send_ping(gaea_token, browser_id, username, user_id, use_proxy))
+    async def process_accounts(self, user_id: str, use_proxy: bool, rotate_proxy: bool):
+        is_valid = await self.process_check_connection(user_id, use_proxy, rotate_proxy)
+        if is_valid:
+            tasks = [
+                asyncio.create_task(self.process_user_earning(user_id, use_proxy)),
+                asyncio.create_task(self.process_claim_daily_Reward(user_id, use_proxy)),
+                asyncio.create_task(self.process_complete_training(user_id, use_proxy)),
+                asyncio.create_task(self.process_send_ping(user_id, use_proxy))
+            ]
             await asyncio.gather(*tasks)
 
     async def main(self):
@@ -409,7 +525,7 @@ class AiGaea:
                 self.log(f"{Fore.RED+Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
                 return
             
-            use_proxy_choice, trained = self.print_question()
+            use_proxy_choice, rotate_proxy = self.print_question()
 
             use_proxy = False
             if use_proxy_choice in [1, 2]:
@@ -425,23 +541,34 @@ class AiGaea:
             if use_proxy:
                 await self.load_proxies(use_proxy_choice)
 
-            self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
+            self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*75)
 
-            while True:
-                tasks = []
-                for account in accounts:
-                    if account:
-                        gaea_token = account["gaeaToken"]
-                        browser_id = account["browserId"]
+            tasks = []
+            for account in accounts:
+                if account:
+                    gaea_token = account["gaeaToken"]
+                    browser_id = account["browserId"]
 
-                        if gaea_token and browser_id:
-                            username, user_id = self.decode_token(gaea_token)
+                    if not gaea_token or not browser_id:
+                        continue
 
-                            if username and user_id:
-                                tasks.append(asyncio.create_task(self.process_accounts(gaea_token, browser_id, username, user_id, use_proxy, trained)))
+                    username, user_id, exp_time = self.decode_token(gaea_token)
 
-                await asyncio.gather(*tasks)
-                await asyncio.sleep(10)
+                    if not username or not user_id or not exp_time:
+                        self.print_err_message(self.mask_account(gaea_token), Fore.RED, "Invalid Gaea Token")
+                        continue
+
+                    if int(time.time()) > exp_time:
+                        self.print_err_message(username, Fore.RED, "Gaea Token Expired")
+                        continue
+                    
+                    self.gaea_tokens[user_id] = gaea_token
+                    self.browser_ids[user_id] = browser_id
+                    self.usernames[user_id] = username
+
+                    tasks.append(asyncio.create_task(self.process_accounts(user_id, use_proxy, rotate_proxy)))
+
+            await asyncio.gather(*tasks)
 
         except Exception as e:
             self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")

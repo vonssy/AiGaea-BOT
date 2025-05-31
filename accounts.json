@@ -1,10 +1,10 @@
 [
     {
         "browserId": "Your browser_id 1",
-        "gaeaToken": "Your aigaea__token 1"
+        "gaeaToken": "Your aigaea_token 1"
     },
     {
         "browserId": "Your browser_id 2",
-        "gaeaToken": "Your aigaea__token 2"
+        "gaeaToken": "Your aigaea_token 2"
     }
 ]
