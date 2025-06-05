@@ -76,18 +76,18 @@ class AiGaea:
         try:
             if use_proxy_choice == 1:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get("https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt") as response:
+                    async with session.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text") as response:
                         response.raise_for_status()
                         content = await response.text()
                         with open(filename, 'w') as f:
                             f.write(content)
-                        self.proxies = content.splitlines()
+                        self.proxies = [line.strip() for line in content.splitlines() if line.strip()]
             else:
                 if not os.path.exists(filename):
                     self.log(f"{Fore.RED + Style.BRIGHT}File {filename} Not Found.{Style.RESET_ALL}")
                     return
                 with open(filename, 'r') as f:
-                    self.proxies = f.read().splitlines()
+                    self.proxies = [line.strip() for line in f.read().splitlines() if line.strip()]
             
             if not self.proxies:
                 self.log(f"{Fore.RED + Style.BRIGHT}No Proxies Found.{Style.RESET_ALL}")
@@ -139,28 +139,21 @@ class AiGaea:
             return None, None, None
     
     def generate_ping_payload(self, user_id: str):
-        payload = {
-            "uid":user_id,
-            "browser_id":self.browser_ids[user_id],
-            "timestamp":int(time.time()),
-            "version":"3.0.19"
-        }
+        try:
+            payload = {
+                "uid":user_id,
+                "browser_id":self.browser_ids[user_id],
+                "timestamp":int(time.time()),
+                "version":"3.0.19"
+            }
 
-        return payload
+            return payload
+        except Exception as e:
+            raise Exception(f"Generate Req Payload Failed: {str(e)}")
     
     def mask_account(self, account):
         mask_account = account[:3] + '*' * 3 + account[-3:]
         return mask_account
-
-    def print_err_message(self, account, color, message):
-        self.log(
-            f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} {account} {Style.RESET_ALL}"
-            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-            f"{Fore.CYAN + Style.BRIGHT} Status: {Style.RESET_ALL}"
-            f"{color + Style.BRIGHT}{message}{Style.RESET_ALL}"
-            f"{Fore.CYAN + Style.BRIGHT} ]{Style.RESET_ALL}"
-        )
         
     def print_message(self, account, proxy, color, message):
         self.log(
@@ -176,28 +169,27 @@ class AiGaea:
         )
 
     def print_question(self):
-        rotate = False
-
         while True:
             try:
-                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Monosans Proxy{Style.RESET_ALL}")
+                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Proxyscrape Free Proxy{Style.RESET_ALL}")
                 print(f"{Fore.WHITE + Style.BRIGHT}2. Run With Private Proxy{Style.RESET_ALL}")
                 print(f"{Fore.WHITE + Style.BRIGHT}3. Run Without Proxy{Style.RESET_ALL}")
                 choose = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2/3] -> {Style.RESET_ALL}").strip())
 
                 if choose in [1, 2, 3]:
                     proxy_type = (
-                        "Run With Monosans Proxy" if choose == 1 else 
-                        "Run With Private Proxy" if choose == 2 else 
-                        "Run Without Proxy"
+                        "With Proxyscrape Free" if choose == 1 else 
+                        "With Private" if choose == 2 else 
+                        "Without"
                     )
-                    print(f"{Fore.GREEN + Style.BRIGHT}{proxy_type} Selected.{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected.{Style.RESET_ALL}")
                     break
                 else:
                     print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
             except ValueError:
                 print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
 
+        rotate = False
         if choose in [1, 2]:
             while True:
                 rotate = input(f"{Fore.BLUE + Style.BRIGHT}Rotate Invalid Proxy? [y/n] -> {Style.RESET_ALL}").strip()
@@ -338,31 +330,10 @@ class AiGaea:
                     continue
                 return self.print_message(self.usernames[user_id], proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
             
-    async def process_check_connection(self, user_id: str, use_proxy: bool, rotate_proxy: bool):
-        proxy = self.get_next_proxy_for_account(user_id) if use_proxy else None
-
-        if rotate_proxy:
-            while True:
-                is_valid = await self.check_connection(user_id, proxy)
-                if is_valid and is_valid.get("code") == 200:
-                    country = is_valid["data"]["country"]
-                    host = is_valid["data"]["host"]
-
-                    self.print_message(self.usernames[user_id], proxy, Fore.GREEN, "Connection 200 OK"
-                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                        f"{Fore.CYAN + Style.BRIGHT}Country:{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {country} {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                        f"{Fore.CYAN + Style.BRIGHT} Connected Host: {Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT}{host}{Style.RESET_ALL}"
-                    )
-                    return True
-                
-                proxy = self.rotate_proxy_for_account(user_id)
-                await asyncio.sleep(5)
-                continue
-            
+    async def process_check_connection(self, user_id: str, use_proxy: bool, rotate_proxy: bool):    
         while True:
+            proxy = self.get_next_proxy_for_account(user_id) if use_proxy else None
+
             is_valid = await self.check_connection(user_id, proxy)
             if is_valid and is_valid.get("code") == 200:
                 country = is_valid["data"]["country"]
@@ -378,7 +349,9 @@ class AiGaea:
                 )
                 return True
             
-            proxy = self.rotate_proxy_for_account(user_id)
+            if rotate_proxy:
+                proxy = self.rotate_proxy_for_account(user_id)
+
             await asyncio.sleep(5)
             continue
             
@@ -544,22 +517,44 @@ class AiGaea:
             self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*75)
 
             tasks = []
-            for account in accounts:
+            for idx, account in enumerate(accounts, start=1):
                 if account:
                     gaea_token = account["gaeaToken"]
                     browser_id = account["browserId"]
 
                     if not gaea_token or not browser_id:
+                        self.log(
+                            f"{Fore.CYAN + Style.BRIGHT}[ Account: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{idx}{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                            f"{Fore.RED + Style.BRIGHT} Invalid Account Data {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                        )
                         continue
 
                     username, user_id, exp_time = self.decode_token(gaea_token)
 
                     if not username or not user_id or not exp_time:
-                        self.print_err_message(self.mask_account(gaea_token), Fore.RED, "Invalid Gaea Token")
+                        self.log(
+                            f"{Fore.CYAN + Style.BRIGHT}[ Account: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{idx}{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                            f"{Fore.RED + Style.BRIGHT} Invalid Gaea Token {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                        )
                         continue
 
                     if int(time.time()) > exp_time:
-                        self.print_err_message(username, Fore.RED, "Gaea Token Expired")
+                        self.log(
+                            f"{Fore.CYAN + Style.BRIGHT}[ Account: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{username}{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                            f"{Fore.RED + Style.BRIGHT} Gaea Token Already Expired {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                        )
                         continue
                     
                     self.gaea_tokens[user_id] = gaea_token
