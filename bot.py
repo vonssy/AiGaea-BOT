@@ -212,6 +212,8 @@ class AiGaea:
                     return await response.json()
         except (Exception, ClientResponseError) as e:
              self.print_message(self.usernames[user_id], proxy, Fore.RED, f"Connection Not 200 OK: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+
+        return None
     
     async def user_earning(self, user_id: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/earn/info"
@@ -231,7 +233,9 @@ class AiGaea:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.print_message(self.usernames[user_id], proxy, Fore.RED, f"GET Earning Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                self.print_message(self.usernames[user_id], proxy, Fore.RED, f"GET Earning Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+
+        return None
                 
     async def daily_list(self, user_id: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/reward/daily-list"
@@ -251,7 +255,9 @@ class AiGaea:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.print_message(self.usernames[user_id], proxy, Fore.RED, f"GET Daily Reward Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                self.print_message(self.usernames[user_id], proxy, Fore.RED, f"GET Daily Reward Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+
+        return None
             
     async def complete_daily(self, user_id: str, daily_id: int, proxy=None, retries=5):
         url = f"{self.BASE_API}/reward/daily-complete"
@@ -273,7 +279,9 @@ class AiGaea:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.print_message(self.usernames[user_id], proxy, Fore.RED, f"Daily Reward Not Claimed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                self.print_message(self.usernames[user_id], proxy, Fore.RED, f"Daily Reward Not Claimed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+
+        return None
             
     async def complete_training(self, user_id: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/ai/complete"
@@ -295,7 +303,9 @@ class AiGaea:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.print_message(self.usernames[user_id], proxy, Fore.RED, f"Training Not Completed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                self.print_message(self.usernames[user_id], proxy, Fore.RED, f"Training Not Completed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+
+        return None
     
     async def send_ping(self, user_id: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/network/ping"
@@ -324,7 +334,9 @@ class AiGaea:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.print_message(self.usernames[user_id], proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                self.print_message(self.usernames[user_id], proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+
+        return None
             
     async def process_check_connection(self, user_id: str, use_proxy: bool, rotate_proxy: bool):    
         while True:
