@@ -369,8 +369,8 @@ class AiGaea:
 
             earning = await self.user_earning(user_id, proxy)
             if earning and earning.get("code") == 200:
-                today = earning["data"]["today_total"]
-                total = earning["data"]["total_total"]
+                today = earning["data"]["today_gaea"]
+                total = earning["data"]["era_gaea"]
                 soul = earning["data"]["total_soul"]
                 core = earning["data"]["total_core"]
                 uptime = earning["data"]["today_uptime"]
