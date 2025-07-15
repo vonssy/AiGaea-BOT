@@ -45,7 +45,7 @@ class AiGaea:
     def welcome(self):
         print(
             f"""
-        {Fore.GREEN + Style.BRIGHT}Auto Ping {Fore.BLUE + Style.BRIGHT}AI Gaea - BOT
+        {Fore.GREEN + Style.BRIGHT}AI Gaea {Fore.BLUE + Style.BRIGHT}Auto BOT
             """
             f"""
         {Fore.GREEN + Style.BRIGHT}Rey? {Fore.YELLOW + Style.BRIGHT}<INI WATERMARK>
