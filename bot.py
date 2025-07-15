@@ -1,13 +1,14 @@
 from aiohttp import (
     ClientResponseError,
     ClientSession,
-    ClientTimeout
+    ClientTimeout,
+    BasicAuth
 )
 from aiohttp_socks import ProxyConnector
 from fake_useragent import FakeUserAgent
 from datetime import datetime
 from colorama import *
-import asyncio, base64, time, json, os, pytz
+import asyncio, base64, time, json, re, os, pytz
 
 wib = pytz.timezone('Asia/Jakarta')
 
@@ -76,7 +77,7 @@ class AiGaea:
         try:
             if use_proxy_choice == 1:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text") as response:
+                    async with session.get("https://raw.githubusercontent.com/monosans/proxy-list/refs/heads/main/proxies/http.txt") as response:
                         response.raise_for_status()
                         content = await response.text()
                         with open(filename, 'w') as f:
@@ -108,22 +109,42 @@ class AiGaea:
             return proxies
         return f"http://{proxies}"
 
-    def get_next_proxy_for_account(self, token):
-        if token not in self.account_proxies:
+    def get_next_proxy_for_account(self, account):
+        if account not in self.account_proxies:
             if not self.proxies:
                 return None
             proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-            self.account_proxies[token] = proxy
+            self.account_proxies[account] = proxy
             self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
-        return self.account_proxies[token]
+        return self.account_proxies[account]
 
-    def rotate_proxy_for_account(self, token):
+    def rotate_proxy_for_account(self, account):
         if not self.proxies:
             return None
         proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-        self.account_proxies[token] = proxy
+        self.account_proxies[account] = proxy
         self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
         return proxy
+    
+    def build_proxy_config(self, proxy=None):
+        if not proxy:
+            return None, None, None
+
+        if proxy.startswith("socks"):
+            connector = ProxyConnector.from_url(proxy)
+            return connector, None, None
+
+        elif proxy.startswith("http"):
+            match = re.match(r"http://(.*?):(.*?)@(.*)", proxy)
+            if match:
+                username, password, host_port = match.groups()
+                clean_url = f"http://{host_port}"
+                auth = BasicAuth(username, password)
+                return None, clean_url, auth
+            else:
+                return None, proxy, None
+
+        raise Exception("Unsupported Proxy Type.")
     
     def decode_token(self, token: str):
         try:
@@ -144,7 +165,7 @@ class AiGaea:
                 "uid":user_id,
                 "browser_id":self.browser_ids[user_id],
                 "timestamp":int(time.time()),
-                "version":"3.0.19"
+                "version":"3.0.20"
             }
 
             return payload
@@ -197,17 +218,17 @@ class AiGaea:
 
         return choose, rotate
     
-    async def check_connection(self, user_id: str, proxy=None):
+    async def check_connection(self, user_id: str, proxy_url=None):
         url = f"{self.BASE_API}/network/ip"
         headers = {
             **self.headers,
             "Authorization": f"Bearer {self.gaea_tokens[user_id]}",
             "Content-Type": "application/json"
         }
-        connector = ProxyConnector.from_url(proxy) if proxy else None
+        connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
         try:
             async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                async with session.get(url=url, headers=headers, ssl=False) as response:
+                async with session.get(url=url, headers=headers, proxy=proxy, proxy_auth=proxy_auth) as response:
                     response.raise_for_status()
                     return await response.json()
         except (Exception, ClientResponseError) as e:
@@ -215,7 +236,7 @@ class AiGaea:
 
         return None
     
-    async def user_earning(self, user_id: str, proxy=None, retries=5):
+    async def user_earning(self, user_id: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/earn/info"
         headers = {
             **self.headers,
@@ -223,10 +244,10 @@ class AiGaea:
             "Content-Type": "application/json"
         }
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers, ssl=False) as response:
+                    async with session.get(url=url, headers=headers, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -237,7 +258,7 @@ class AiGaea:
 
         return None
                 
-    async def daily_list(self, user_id: str, proxy=None, retries=5):
+    async def daily_list(self, user_id: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/reward/daily-list"
         headers = {
             **self.headers,
@@ -245,10 +266,10 @@ class AiGaea:
             "Content-Type": "application/json"
         }
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers, ssl=False) as response:
+                    async with session.get(url=url, headers=headers, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -259,7 +280,7 @@ class AiGaea:
 
         return None
             
-    async def complete_daily(self, user_id: str, daily_id: int, proxy=None, retries=5):
+    async def complete_daily(self, user_id: str, daily_id: int, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/reward/daily-complete"
         data = json.dumps({"id":daily_id})
         headers = {
@@ -269,10 +290,10 @@ class AiGaea:
             "Content-Type": "application/json"
         }
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data, ssl=False) as response:
+                    async with session.post(url=url, headers=headers, data=data, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -283,7 +304,7 @@ class AiGaea:
 
         return None
             
-    async def complete_training(self, user_id: str, proxy=None, retries=5):
+    async def complete_training(self, user_id: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/ai/complete"
         data = json.dumps({"detail":"2_0_0"})
         headers = {
@@ -293,10 +314,10 @@ class AiGaea:
             "Content-Type": "application/json"
         }
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data, ssl=False) as response:
+                    async with session.post(url=url, headers=headers, data=data, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -307,7 +328,7 @@ class AiGaea:
 
         return None
     
-    async def send_ping(self, user_id: str, proxy=None, retries=5):
+    async def send_ping(self, user_id: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/network/ping"
         data = json.dumps(self.generate_ping_payload(user_id))
         headers = {
@@ -324,10 +345,10 @@ class AiGaea:
             "User-Agent": FakeUserAgent().random
         }
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data, ssl=False) as response:
+                    async with session.post(url=url, headers=headers, data=data, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -359,9 +380,6 @@ class AiGaea:
             
             if rotate_proxy:
                 proxy = self.rotate_proxy_for_account(user_id)
-
-            await asyncio.sleep(5)
-            continue
             
     async def process_user_earning(self, user_id: str, use_proxy: bool):
         while True:
